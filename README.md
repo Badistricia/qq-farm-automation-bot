@@ -1,23 +1,11 @@
 # QQ 农场多账号挂机 + Web 面板
+## 作者QQ：1503938233
 - 基于 Node.js 的 QQ 农场自动化工具，支持多账号管理、Web 控制面板、实时日志与数据分析。
 - 更新优化日志详见update.log 感谢支持，喜欢的点一个star⭐吧！
 - 默认账号密码都是admin，端口3007，请部署登录后尽快修改密码！
 - 最近完整更新日志详见：[更新日志](https://gitee.com/xlzcandy/qq-classic-farm-update-log/blob/master/README.md)
+- 开源版停止维护，如果你依旧继续使用开源版本请自行解决部署问题，使用问题等，感谢各位支持！
 ---
-
-**功能截图**
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac8f55b15.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac8f21271.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac900b669.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac900f96f.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac9015523.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac91aaf20.jpg"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac9226277.png"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ac9248b2d.jpg"  alt="图片失效"/>
-<img src="https://free.picui.cn/free/2026/04/16/69e0ad3e51321.png"  alt="图片失效"/>
-
----
-
 ## 技术栈
 
 **后端**
