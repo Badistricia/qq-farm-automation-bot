@@ -45,6 +45,12 @@ export interface OfflineConfig {
   title: string
   msg: string
   offlineDeleteSec: number
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPass?: string
+  toEmail?: string
+  smtpSecure?: boolean
 }
 
 export interface UIConfig {
@@ -89,6 +95,12 @@ export const useSettingStore = defineStore('setting', () => {
       title: '账号下线提醒',
       msg: '账号下线',
       offlineDeleteSec: 0,
+      smtpHost: '',
+      smtpPort: 465,
+      smtpUser: '',
+      smtpPass: '',
+      toEmail: '',
+      smtpSecure: true,
     },
     stealDelaySeconds: 0,
     plantOrderRandom: false,
@@ -125,6 +137,12 @@ export const useSettingStore = defineStore('setting', () => {
           title: '账号下线提醒',
           msg: '账号下线',
           offlineDeleteSec: 0,
+          smtpHost: '',
+          smtpPort: 465,
+          smtpUser: '',
+          smtpPass: '',
+          toEmail: '',
+          smtpSecure: true,
         }
         settings.value.stealDelaySeconds = d.stealDelaySeconds ?? 0
         settings.value.plantOrderRandom = d.plantOrderRandom ?? false

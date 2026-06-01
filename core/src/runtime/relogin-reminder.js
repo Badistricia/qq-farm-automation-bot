@@ -176,12 +176,17 @@ function createReloginReminderService(options) {
             const baseTitle = String(cfg.title || '').trim();
             const title = accountName ? `${baseTitle} ${accountName}` : baseTitle;
             let content = String(cfg.msg || '').trim();
-            if (!channel || !token || !title || !content) {
+            const isEmail = channel === 'email';
+            if (!channel || (!isEmail && !token) || !title || !content) {
                 log('错误', `下线提醒配置不完整: channel=${channel}, token=${token ? '已设置' : '未设置'}, title=${title}, content=${content}`);
                 return;
             }
             if (channel === 'webhook' && !endpoint) {
                 log('错误', 'Webhook 渠道未设置接口地址');
+                return;
+            }
+            if (isEmail && (!cfg.smtpHost || !cfg.smtpUser || !cfg.smtpPass || !cfg.toEmail)) {
+                log('错误', '邮件渠道下线提醒配置不完整：SMTP 服务器、账号、密码及接收邮箱必须设置。');
                 return;
             }
             if (reloginUrlMode === 'qq_link' || reloginUrlMode === 'qr_link') {
@@ -216,6 +221,12 @@ function createReloginReminderService(options) {
                 token,
                 title,
                 content,
+                smtpHost: cfg.smtpHost,
+                smtpPort: cfg.smtpPort,
+                smtpUser: cfg.smtpUser,
+                smtpPass: cfg.smtpPass,
+                toEmail: cfg.toEmail,
+                smtpSecure: cfg.smtpSecure,
             });
 
             if (ret && ret.ok) {

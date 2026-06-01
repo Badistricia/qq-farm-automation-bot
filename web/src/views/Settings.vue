@@ -688,9 +688,16 @@ const localOffline = ref({
   title: '',
   msg: '',
   offlineDeleteSec: 0,
+  smtpHost: '',
+  smtpPort: 465,
+  smtpUser: '',
+  smtpPass: '',
+  toEmail: '',
+  smtpSecure: true,
 })
 
 const channelOptions = [
+  { label: '邮件通知 (SMTP)', value: 'email' },
   { label: 'Webhook(自定义接口)', value: 'webhook' },
   { label: 'Qmsg 酱', value: 'qmsg' },
   { label: 'Server 酱', value: 'serverchan' },
@@ -1517,6 +1524,7 @@ async function handleTestOffline() {
                 </div>
 
                 <BaseInput
+                  v-if="localOffline.channel !== 'email'"
                   v-model="localOffline.endpoint"
                   label="接口地址"
                   type="text"
@@ -1524,11 +1532,55 @@ async function handleTestOffline() {
                 />
 
                 <BaseInput
+                  v-if="localOffline.channel !== 'email'"
                   v-model="localOffline.token"
                   label="Token"
                   type="text"
                   placeholder="接收端 token"
                 />
+
+                <div v-if="localOffline.channel === 'email'" class="border-t pt-3 space-y-3 dark:border-gray-700">
+                  <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">邮件服务器设置 (SMTP)</div>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <BaseInput
+                      v-model="localOffline.smtpHost"
+                      label="SMTP 服务器地址"
+                      type="text"
+                      placeholder="例如: smtp.qq.com"
+                    />
+                    <BaseInput
+                      v-model.number="localOffline.smtpPort"
+                      label="SMTP 端口"
+                      type="number"
+                      placeholder="例如: 465 或 587"
+                    />
+                    <BaseSwitch
+                      v-model="localOffline.smtpSecure"
+                      label="启用 SSL/TLS"
+                      class="flex items-end pb-2"
+                    />
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <BaseInput
+                      v-model="localOffline.smtpUser"
+                      label="SMTP 邮箱账号"
+                      type="text"
+                      placeholder="例如: username@qq.com"
+                    />
+                    <BaseInput
+                      v-model="localOffline.smtpPass"
+                      label="SMTP 密码/授权码"
+                      type="password"
+                      placeholder="授权码或邮箱密码"
+                    />
+                    <BaseInput
+                      v-model="localOffline.toEmail"
+                      label="接收通知邮箱"
+                      type="text"
+                      placeholder="例如: recipient@qq.com"
+                    />
+                  </div>
+                </div>
 
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <BaseInput

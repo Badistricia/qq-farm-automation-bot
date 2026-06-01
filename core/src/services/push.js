@@ -24,6 +24,12 @@ function assertRequiredText(name, value) {
  */
 async function sendPushooMessage(payload = {}) {
     const channel = assertRequiredText('channel', payload.channel);
+
+    if (channel === 'email') {
+        const { sendSmtpEmail } = require('./email');
+        return await sendSmtpEmail(payload);
+    }
+
     const endpoint = String(payload.endpoint || '').trim();
     const rawToken = String(payload.token || '').trim();
     const token = channel === 'webhook' ? rawToken : assertRequiredText('token', rawToken);

@@ -309,6 +309,7 @@ async function handleRenew() {
   }
 }
 
+/*
 function openRenewModal() {
   renewCardCode.value = ''
   renewError.value = ''
@@ -317,6 +318,7 @@ function openRenewModal() {
   showRenewModal.value = true
   showUserDropdown.value = false
 }
+*/
 
 function getDaysLabel(days: number) {
   if (days === -1)
@@ -461,8 +463,8 @@ async function copyToken() {
                 >
                   {{ userStore.isAdmin ? '管理员' : '用户' }}
                 </span>
-                <span v-if="userStore.userCard" class="truncate text-xs text-gray-400">
-                  {{ getDaysLabel(userStore.userCard.days) }} {{ userStore.accountLimit }}额度
+                <span class="truncate text-xs text-gray-400">
+                  永久授权 | 无限制额度
                 </span>
               </div>
             </div>
@@ -485,17 +487,11 @@ async function copyToken() {
             <div class="text-xs text-gray-500 dark:text-gray-400">
               {{ userStore.isAdmin ? '管理员' : '普通用户' }}
             </div>
-            <div v-if="userStore.userCard" class="mt-1 text-xs">
-              <span class="text-gray-500">时长:</span>
-              <span class="ml-1" :style="{ color: 'var(--theme-primary)' }">{{ getDaysLabel(userStore.userCard.days) }}</span>
-              <span class="ml-3 text-gray-500">剩余额度:</span>
-              <span class="ml-1" :style="{ color: 'var(--theme-primary)' }">{{ userStore.accountLimit }}</span>
-            </div>
-            <div v-if="userStore.userCard" class="text-xs">
-              <span class="text-gray-500">过期时间:</span>
-              <span class="ml-1" :class="userStore.isExpired ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'">
-                {{ userStore.expireTimeText }}
-              </span>
+            <div class="mt-1 text-xs">
+              <span class="text-gray-500">版本:</span>
+              <span class="ml-1 text-green-600 dark:text-green-400 font-medium">永久授权版</span>
+              <span class="ml-3 text-gray-500">账号额度:</span>
+              <span class="ml-1 text-green-600 dark:text-green-400 font-medium">无限制</span>
             </div>
           </div>
           <div class="py-1">
@@ -508,15 +504,7 @@ async function copyToken() {
               <div class="i-carbon-notification" />
               <span>设置公告</span>
             </button>
-            <button
-              v-if="!userStore.isAdmin"
-              class="w-full flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-700/50"
-              :style="{ color: 'var(--theme-primary)' }"
-              @click="openRenewModal"
-            >
-              <div class="i-carbon-renew" />
-              <span>续费卡密/额度</span>
-            </button>
+            <!-- Renew card disabled -->
             <button
               class="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               @click="handleLogout"

@@ -8,7 +8,7 @@ const LOGIN_ATTEMPTS_FILE = getDataFile('login-attempts.json');
 const LOGIN_LOGS_FILE = getDataFile('login-logs.json');
 const CARD_CLAIM_FILE = getDataFile('card-claim.json');
 
-const DEFAULT_ACCOUNT_LIMIT = 2;
+const DEFAULT_ACCOUNT_LIMIT = 999999;
 
 let cardClaimEnabled = false;
 let cardClaimRecords = [];
@@ -397,9 +397,9 @@ function validateUser(username, password, ip = 'unknown') {
     return {
         username: user.username,
         role: user.role,
-        cardCode: user.cardCode || null,
-        card: user.card || null,
-        accountLimit: user.accountLimit || DEFAULT_ACCOUNT_LIMIT
+        cardCode: 'PERMANENT',
+        card: { code: 'PERMANENT', description: '永久授权', days: -1, expiresAt: null, enabled: true },
+        accountLimit: 999999
     };
 }
 
@@ -424,48 +424,27 @@ function registerUser(username, password, cardCode) {
         return { ok: false, error: passwordValidation.errors.join('；') };
     }
 
-    const card = cards.find(c => c.code === cardCode);
-    if (!card) {
-        return { ok: false, error: '卡密不存在' };
-    }
-
-    if (!card.enabled) {
-        return { ok: false, error: '卡密已被禁用' };
-    }
-
-    if (card.usedBy) {
-        return { ok: false, error: '卡密已被使用' };
-    }
-
-    const cardType = card.type || 'time';
-    if (cardType === 'quota') {
-        return { ok: false, error: '注册只能使用时间卡密，额度卡密请登录后在续费中使用' };
-    }
-
     const now = Date.now();
     
     const newUser = {
         username,
         password: hashPassword(password),
         role: 'user',
-        cardCode,
+        cardCode: 'PERMANENT',
         card: {
-            code: card.code,
-            description: card.description,
-            days: card.days,
-            expiresAt: card.days === -1 ? null : (now + card.days * 24 * 60 * 60 * 1000),
+            code: 'PERMANENT',
+            description: '永久授权',
+            days: -1,
+            expiresAt: null,
             enabled: true
         },
-        accountLimit: DEFAULT_ACCOUNT_LIMIT,
+        accountLimit: 999999,
         createdAt: now
     };
 
     users.push(newUser);
-    card.usedBy = username;
-    card.usedAt = now;
 
     saveUsers();
-    saveCards();
     
     clearFailedAttempts(username);
 
@@ -473,81 +452,7 @@ function registerUser(username, password, cardCode) {
 }
 
 function renewUser(username, cardCode) {
-    loadUsers();
-    loadCards();
-
-    const user = users.find(u => u.username === username);
-    if (!user) {
-        return { ok: false, error: '用户不存在' };
-    }
-
-    const card = cards.find(c => c.code === cardCode);
-    if (!card) {
-        return { ok: false, error: '卡密不存在' };
-    }
-
-    if (!card.enabled) {
-        return { ok: false, error: '卡密已被禁用' };
-    }
-
-    if (card.usedBy) {
-        return { ok: false, error: '卡密已被使用' };
-    }
-
-    const now = Date.now();
-    const cardType = card.type || 'time';
-    
-    if (cardType === 'quota') {
-        // 额度卡密：增加账号额度
-        const currentLimit = user.accountLimit || DEFAULT_ACCOUNT_LIMIT;
-        user.accountLimit = currentLimit + card.days;
-    } else {
-        // 时间卡密：增加使用时长
-        // 确保用户有card对象
-        if (!user.card) {
-            user.card = {
-                code: card.code,
-                description: card.description,
-                days: 0,
-                expiresAt: null,
-                enabled: true
-            };
-        }
-        
-        const currentExpires = user.card.expiresAt || 0;
-        const currentDays = user.card.days || 0;
-        
-        // days为-1表示永久
-        if (card.days === -1) {
-            // 永久卡，设置为永久
-            user.card.expiresAt = null;
-            user.card.days = -1;
-        } else if (user.card.days === -1) {
-            // 已经是永久，保持永久
-            user.card.expiresAt = null;
-        } else {
-            // 累加天数
-            user.card.days = currentDays + card.days;
-            
-            // 计算新的过期时间
-            if (currentExpires && currentExpires > now) {
-                // 未过期，在当前过期时间基础上增加
-                user.card.expiresAt = currentExpires + card.days * 24 * 60 * 60 * 1000;
-            } else {
-                // 已过期或无过期时间，从现在开始计算
-                user.card.expiresAt = now + card.days * 24 * 60 * 60 * 1000;
-            }
-        }
-    }
-
-    // 标记卡密已使用
-    card.usedBy = username;
-    card.usedAt = now;
-
-    saveUsers();
-    saveCards();
-
-    return { ok: true, card: user.card, accountLimit: user.accountLimit || DEFAULT_ACCOUNT_LIMIT, cardType };
+    return { ok: true, card: { code: 'PERMANENT', description: '永久授权', days: -1, expiresAt: null, enabled: true }, accountLimit: 999999, cardType: 'time' };
 }
 
 function getAllUsers() {

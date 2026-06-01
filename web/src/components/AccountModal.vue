@@ -105,7 +105,31 @@ async function submitManual() {
     return
   }
 
-  let code = form.code.trim()
+  const rawCode = form.code.trim()
+
+  // 兜底设计：如果用户粘贴的是包含版本号的完整 URL，自动更新系统全局配置的版本号
+  const verMatch = rawCode.match(/[?&]ver=([^&]+)/i)
+  if (verMatch && verMatch[1]) {
+    const version = decodeURIComponent(verMatch[1])
+    try {
+      const configRes = await api.get('/api/admin/system-config')
+      if (configRes.data.ok) {
+        const currentConfig = configRes.data.data.current || {}
+        if (currentConfig.clientVersion !== version) {
+          await api.post('/api/admin/system-config', {
+            ...currentConfig,
+            clientVersion: version,
+          })
+          console.log('[自动配置] 检测到新版本号并已自动更新:', version)
+        }
+      }
+    }
+    catch (e) {
+      console.error('[自动配置] 自动更新版本号失败:', e)
+    }
+  }
+
+  let code = rawCode
   const match = code.match(/[?&]code=([^&]+)/i)
   if (match && match[1]) {
     code = decodeURIComponent(match[1])

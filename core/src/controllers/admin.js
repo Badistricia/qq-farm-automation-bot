@@ -110,30 +110,7 @@ function startAdminServer(dataProvider) {
         req.adminToken = token;
         req.currentUser = tokenUserMap.get(token);
 
-        // 管理员不检查封禁和过期
-        if (req.currentUser && req.currentUser.role !== 'admin') {
-            // 检查用户状态（每次请求都检查）
-            if (req.currentUser.card) {
-                // 检查是否被封禁
-                if (req.currentUser.card.enabled === false) {
-                    console.log('[请求拒绝] 用户已被封禁:', req.currentUser.username);
-                    tokens.delete(token);
-                    tokenUserMap.delete(token);
-                    return res.status(403).json({ ok: false, error: '账号已被封禁，请联系管理员' });
-                }
-
-                // 检查是否过期
-                if (req.currentUser.card.expiresAt) {
-                    const now = Date.now();
-                    if (req.currentUser.card.expiresAt < now) {
-                        console.log('[请求拒绝] 用户已过期:', req.currentUser.username);
-                        tokens.delete(token);
-                        tokenUserMap.delete(token);
-                        return res.status(403).json({ ok: false, error: '账号已过期，请续费后重新登录' });
-                    }
-                }
-            }
-        }
+        // Card keys / limits disabled: skip checking bans and expiration
 
         next();
     };
@@ -178,69 +155,14 @@ function startAdminServer(dataProvider) {
         req.adminToken = token;
         req.currentUser = tokenUserMap.get(token);
 
-        // 管理员不检查封禁和过期
-        if (req.currentUser && req.currentUser.role !== 'admin') {
-            // 检查用户状态（每次请求都检查）
-            if (req.currentUser.card) {
-                // 检查是否被封禁
-                if (req.currentUser.card.enabled === false) {
-                    console.log('[请求拒绝] 用户已被封禁:', req.currentUser.username);
-                    tokens.delete(token);
-                    tokenUserMap.delete(token);
-                    return res.status(403).json({ ok: false, error: '账号已被封禁，请联系管理员' });
-                }
-
-                // 检查是否过期
-                if (req.currentUser.card.expiresAt) {
-                    const now = Date.now();
-                    if (req.currentUser.card.expiresAt < now) {
-                        console.log('[请求拒绝] 用户已过期:', req.currentUser.username);
-                        tokens.delete(token);
-                        tokenUserMap.delete(token);
-                        return res.status(403).json({ ok: false, error: '账号已过期，请续费后重新登录' });
-                    }
-                }
-            }
-        }
+        // Card keys / limits disabled: skip checking bans and expiration
 
         next();
     };
 
-    // 定期清理过期用户（每5分钟检查一次）
+    // 定期清理过期用户（已禁用，因为已移除卡密机制）
     const cleanupExpiredUsers = () => {
-        const now = Date.now();
-        const usersToCleanup = [];
-
-        for (const [token, user] of tokenUserMap.entries()) {
-            if (user.role === 'admin') continue; // 管理员不检查
-
-            // 检查是否被封禁
-            if (user.card && user.card.enabled === false) {
-                console.log(`[自动检查] 用户 ${user.username} 已被封禁，执行清理...`);
-                usersToCleanup.push({ token, username: user.username, reason: 'banned' });
-                continue;
-            }
-
-            // 检查是否过期
-            if (user.card && user.card.expiresAt && user.card.expiresAt < now) {
-                console.log(`[自动检查] 用户 ${user.username} 已过期，执行清理...`);
-                usersToCleanup.push({ token, username: user.username, reason: 'expired' });
-            }
-        }
-
-        for (const { token, username, reason } of usersToCleanup) {
-            tokens.delete(token);
-            tokenUserMap.delete(token);
-            // 断开相关 socket 连接
-            if (io) {
-                for (const socket of io.sockets.sockets.values()) {
-                    if (String(socket.data.adminToken || '') === String(token)) {
-                        socket.disconnect(true);
-                    }
-                }
-            }
-            console.log(`[自动清理] 用户 ${username} 已${reason === 'banned' ? '被封禁' : '过期'}，已强制下线`);
-        }
+        // Expiration check disabled
     };
 
     // 启动定期清理
@@ -1498,6 +1420,20 @@ function startAdminServer(dataProvider) {
             if (channel === 'webhook' && !endpoint) {
                 return res.status(400).json({ ok: false, error: 'Webhook 渠道需要填写接口地址' });
             }
+            if (channel === 'email') {
+                if (!String(cfg.smtpHost || '').trim()) {
+                    return res.status(400).json({ ok: false, error: '邮件渠道需要填写 SMTP 服务器地址' });
+                }
+                if (!String(cfg.smtpUser || '').trim()) {
+                    return res.status(400).json({ ok: false, error: '邮件渠道需要填写 SMTP 邮箱账号' });
+                }
+                if (!String(cfg.smtpPass || '').trim()) {
+                    return res.status(400).json({ ok: false, error: '邮件渠道需要填写 SMTP 密码/授权码' });
+                }
+                if (!String(cfg.toEmail || '').trim()) {
+                    return res.status(400).json({ ok: false, error: '邮件渠道需要填写接收通知邮箱' });
+                }
+            }
 
             const now = new Date();
             const ts = now.toISOString().replace('T', ' ').slice(0, 19);
@@ -1508,6 +1444,12 @@ function startAdminServer(dataProvider) {
                 token,
                 title: `${titleBase}（测试）`,
                 content: `${msgBase}\n\n这是一条下线提醒测试消息。\n时间: ${ts}`,
+                smtpHost: cfg.smtpHost,
+                smtpPort: cfg.smtpPort,
+                smtpUser: cfg.smtpUser,
+                smtpPass: cfg.smtpPass,
+                toEmail: cfg.toEmail,
+                smtpSecure: cfg.smtpSecure,
             });
 
             if (!ret) {

@@ -13,7 +13,7 @@ const userStore = useUserStore()
 const toast = useToastStore()
 
 const activeTab = ref<'card' | 'user' | 'log' | 'system'>(
-  (localStorage.getItem('admin-active-tab') as 'card' | 'user' | 'log' | 'system') || 'card'
+  (localStorage.getItem('admin-active-tab') as 'card' | 'user' | 'log' | 'system') || 'user'
 )
 
 watch(activeTab, (newTab) => {
@@ -21,7 +21,6 @@ watch(activeTab, (newTab) => {
 })
 
 const tabs = [
-  { key: 'card', label: '卡密', icon: 'i-carbon-ticket' },
   { key: 'user', label: '用户', icon: 'i-carbon-user-admin' },
   { key: 'log', label: '日志', icon: 'i-carbon-document' },
   { key: 'system', label: '系统', icon: 'i-carbon-settings' },

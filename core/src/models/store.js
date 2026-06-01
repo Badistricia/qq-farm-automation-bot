@@ -56,7 +56,7 @@ const PUSHOO_CHANNELS = new Set([
     'webhook', 'qmsg', 'serverchan', 'pushplus', 'pushplushxtrip',
     'dingtalk', 'wecom', 'bark', 'gocqhttp', 'onebot', 'atri',
     'pushdeer', 'igot', 'telegram', 'feishu', 'ifttt', 'wecombot',
-    'discord', 'wxpusher',
+    'discord', 'wxpusher', 'email',
 ]);
 
 const DEFAULT_FERTILIZER_LAND_TYPES = ['gold', 'black', 'red', 'normal'];
@@ -115,6 +115,12 @@ const DEFAULT_OFFLINE_REMINDER = {
     title: '账号下线提醒',
     msg: '账号下线',
     offlineDeleteSec: 0,
+    smtpHost: '',
+    smtpPort: 465,
+    smtpUser: '',
+    smtpPass: '',
+    toEmail: '',
+    smtpSecure: true,
 };
 // ============ 全局配置 ============
 const DEFAULT_ACCOUNT_CONFIG = {
@@ -268,6 +274,25 @@ function normalizeOfflineReminder(input) {
     const msg = (src.msg !== undefined && src.msg !== null)
         ? String(src.msg).trim()
         : DEFAULT_OFFLINE_REMINDER.msg;
+    const smtpHost = (src.smtpHost !== undefined && src.smtpHost !== null)
+        ? String(src.smtpHost).trim()
+        : (DEFAULT_OFFLINE_REMINDER.smtpHost || '');
+    let smtpPort = Number.parseInt(src.smtpPort, 10);
+    if (!Number.isFinite(smtpPort) || smtpPort <= 0) {
+        smtpPort = DEFAULT_OFFLINE_REMINDER.smtpPort || 465;
+    }
+    const smtpUser = (src.smtpUser !== undefined && src.smtpUser !== null)
+        ? String(src.smtpUser).trim()
+        : (DEFAULT_OFFLINE_REMINDER.smtpUser || '');
+    const smtpPass = (src.smtpPass !== undefined && src.smtpPass !== null)
+        ? String(src.smtpPass).trim()
+        : (DEFAULT_OFFLINE_REMINDER.smtpPass || '');
+    const toEmail = (src.toEmail !== undefined && src.toEmail !== null)
+        ? String(src.toEmail).trim()
+        : (DEFAULT_OFFLINE_REMINDER.toEmail || '');
+    const smtpSecure = src.smtpSecure !== undefined && src.smtpSecure !== null
+        ? !!src.smtpSecure
+        : (DEFAULT_OFFLINE_REMINDER.smtpSecure ?? true);
     return {
         channel,
         reloginUrlMode,
@@ -276,6 +301,12 @@ function normalizeOfflineReminder(input) {
         title,
         msg,
         offlineDeleteSec,
+        smtpHost,
+        smtpPort,
+        smtpUser,
+        smtpPass,
+        toEmail,
+        smtpSecure,
     };
 }
 function normalizeFertilizerLandTypes(input, fallback = DEFAULT_FERTILIZER_LAND_TYPES) {

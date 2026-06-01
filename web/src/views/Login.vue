@@ -22,8 +22,8 @@ const showPasswordStrength = ref(false)
 const lockoutRemaining = ref(0)
 const rateLimitRemaining = ref(0)
 
-const cardClaimEnabled = ref(false)
-const cardClaimLoading = ref(false)
+// const cardClaimEnabled = ref(false)
+// const cardClaimLoading = ref(false)
 const showClaimModal = ref(false)
 const claimModalContent = ref({
   success: true,
@@ -104,11 +104,6 @@ function validateForm(): boolean {
     
     if (!passwordStrength.value.valid) {
       error.value = '密码强度不足：需包含大写字母、小写字母、数字、特殊符号中的至少两种'
-      return false
-    }
-    
-    if (!cardCode.value) {
-      error.value = '请输入卡密'
       return false
     }
   }
@@ -194,17 +189,10 @@ function toggleMode() {
 }
 
 async function checkCardClaimStatus() {
-  try {
-    const res = await api.get('/api/card-claim/status')
-    if (res.data.ok) {
-      cardClaimEnabled.value = res.data.enabled === true
-    }
-  }
-  catch (e) {
-    console.error('检查卡密领取状态失败:', e)
-  }
+  // Disabled
 }
 
+/*
 async function claimFreeCard() {
   if (cardClaimLoading.value)
     return
@@ -252,6 +240,7 @@ async function claimFreeCard() {
     cardClaimLoading.value = false
   }
 }
+*/
 
 function closeClaimModal() {
   showClaimModal.value = false
@@ -383,32 +372,7 @@ async function fetchGameVersion() {
           </div>
         </div>
 
-        <div v-if="!isLogin" class="form-group">
-          <label class="form-label">
-            <span class="label-icon">🎫</span>
-            卡密
-          </label>
-          
-          <div v-if="cardClaimEnabled" class="mb-2">
-            <button
-              type="button"
-              class="claim-card-btn"
-              :disabled="cardClaimLoading"
-              @click="claimFreeCard"
-            >
-              <span v-if="cardClaimLoading" class="i-svg-spinners-90-ring-with-bg" />
-              <span v-else>🎁 免费领取卡密</span>
-            </button>
-          </div>
-          
-          <BaseInput
-            id="cardCode"
-            v-model="cardCode"
-            type="text"
-            placeholder="请输入卡密"
-            :required="!isLogin"
-          />
-        </div>
+        <!-- Card keys disabled -->
 
         <BaseButton
           type="submit"
