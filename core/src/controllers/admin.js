@@ -2110,6 +2110,65 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // API: Fiddler 自动更新 Code 接口
+    app.post('/api/accounts/update-code', (req, res) => {
+        try {
+            const body = (req.body && typeof req.body === 'object') ? req.body : {};
+            const code = String(body.code || '').trim();
+            const openID = String(body.openID || '').trim();
+            const uin = String(body.uin || '').trim();
+
+            if (!code) {
+                return res.status(400).json({ ok: false, error: 'code 不能为空' });
+            }
+
+            const accountsData = provider && typeof provider.getAccounts === 'function' 
+                ? provider.getAccounts() 
+                : (store.getAccounts ? store.getAccounts() : { accounts: [] });
+            const accounts = Array.isArray(accountsData.accounts) ? accountsData.accounts : [];
+
+            if (accounts.length === 0) {
+                return res.status(400).json({ ok: false, error: '系统中没有配置任何账号，请先手动在网页添加一次账号' });
+            }
+
+            let targetAccount = null;
+
+            // 1. 尝试匹配 openID
+            if (openID) {
+                targetAccount = accounts.find(a => String(a.uin) === openID || String(a.qq) === openID);
+            }
+            // 2. 尝试匹配 uin
+            if (!targetAccount && uin) {
+                targetAccount = accounts.find(a => String(a.uin) === uin || String(a.qq) === uin);
+            }
+            // 3. 如果找不到，且系统里只有 1 个账号，直接更新这唯一的账号
+            if (!targetAccount && accounts.length === 1) {
+                targetAccount = accounts[0];
+            }
+
+            if (!targetAccount) {
+                return res.status(404).json({ ok: false, error: '未找到匹配的账号，且系统存在多个账号，无法自动识别更新哪一个。' });
+            }
+
+            // 更新 code
+            const updated = addOrUpdateAccount({
+                id: targetAccount.id,
+                code: code,
+                uin: targetAccount.uin || uin || openID || '',
+                qq: targetAccount.qq || uin || openID || '',
+            });
+
+            // 重启该账号的 worker 进程以应用新 code
+            if (provider && typeof provider.restartAccount === 'function') {
+                provider.restartAccount(targetAccount.id);
+            }
+
+            res.json({ ok: true, msg: `账号 [${targetAccount.name}] 的 Code 已成功自动更新并重启进程。` });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     app.delete('/api/accounts/:id', (req, res) => {
         try {
             const resolvedId = resolveAccId(req.params.id) || String(req.params.id || '');
