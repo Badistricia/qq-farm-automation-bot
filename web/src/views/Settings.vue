@@ -21,8 +21,8 @@ const userStore = useUserStore()
 const settingStore = useSettingStore()
 const farmStore = useFarmStore()
 
-const activeTab = ref<'account' | 'strategy' | 'automation' | 'user'>(
-  (localStorage.getItem('settings-active-tab') as 'account' | 'strategy' | 'automation' | 'user') || 'account'
+const activeTab = ref<'account' | 'strategy' | 'automation' | 'user' | 'seeds'>(
+  (localStorage.getItem('settings-active-tab') as any) || 'account'
 )
 
 watch(activeTab, (newTab) => {
@@ -34,6 +34,7 @@ const tabs = [
   { key: 'strategy', label: '策略设置', icon: 'i-fas-cogs' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-toggle-on' },
   { key: 'user', label: '用户管理', icon: 'i-carbon-user' },
+  { key: 'seeds', label: '自定义种子', icon: 'i-carbon-sprout' },
 ] as const
 
 const modalVisible = ref(false)
@@ -840,6 +841,203 @@ async function handleTestOffline() {
     offlineTesting.value = false
   }
 }
+// ==================== 自定义种子 ====================
+interface CustomSeed {
+  seedId: number
+  name: string
+  landLevelNeed: number
+  seasons: number
+  growTime: number
+  exp: number
+  price: number
+  fruitCount: number
+  seedPrice: number
+}
+
+interface UnconfiguredSeed {
+  seedId: number
+  name: string
+  count: number
+  seedPrice?: number
+  price?: number
+}
+
+const customSeeds = ref<CustomSeed[]>([])
+const unconfiguredSeedsList = ref<UnconfiguredSeed[]>([])
+const systemUnconfiguredSeedsList = ref<UnconfiguredSeed[]>([])
+const customSeedsLoading = ref(false)
+const customSeedSaving = ref(false)
+
+const growTimeUnitValue = ref(12)
+const growTimeUnit = ref<'s' | 'm' | 'h'>('h')
+
+const customSeedForm = ref<CustomSeed>({
+  seedId: 0,
+  name: '',
+  landLevelNeed: 21,
+  seasons: 1,
+  growTime: 43200,
+  exp: 2066,
+  price: 66,
+  fruitCount: 1,
+  seedPrice: 1332,
+})
+
+const isEditingCustomSeed = ref(false)
+
+async function fetchCustomSeeds() {
+  customSeedsLoading.value = true
+  try {
+    const res = await api.get('/api/custom-seeds')
+    if (res.data.ok) {
+      customSeeds.value = res.data.data || []
+      unconfiguredSeedsList.value = res.data.unconfiguredSeeds || []
+      systemUnconfiguredSeedsList.value = res.data.systemUnconfiguredSeeds || []
+    }
+  }
+  catch (e: any) {
+    console.error('加载自定义种子失败:', e)
+  }
+  finally {
+    customSeedsLoading.value = false
+  }
+}
+
+function configureUnconfiguredSeed(seed: UnconfiguredSeed) {
+  const isEventSeed = seed.seedId >= 20000 && seed.seedId < 40000
+  
+  customSeedForm.value = {
+    seedId: seed.seedId,
+    name: seed.name && seed.name !== '未知种子' ? seed.name.replace(/种子$/, '') : `活动种子-${seed.seedId}`,
+    landLevelNeed: isEventSeed ? 21 : 1,
+    seasons: 1,
+    growTime: isEventSeed ? 43200 : 3600,
+    exp: isEventSeed ? 2066 : 50,
+    price: seed.price || (isEventSeed ? 66 : 10),
+    fruitCount: 1,
+    seedPrice: seed.seedPrice || (isEventSeed ? 1332 : 0),
+  }
+  
+  if (isEventSeed) {
+    growTimeUnitValue.value = 12
+    growTimeUnit.value = 'h'
+  } else {
+    growTimeUnitValue.value = 1
+    growTimeUnit.value = 'h'
+  }
+  
+  isEditingCustomSeed.value = false
+}
+
+function resetCustomSeedForm() {
+  customSeedForm.value = {
+    seedId: 0,
+    name: '',
+    landLevelNeed: 21,
+    seasons: 1,
+    growTime: 43200,
+    exp: 2066,
+    price: 66,
+    fruitCount: 1,
+    seedPrice: 1332,
+  }
+  growTimeUnitValue.value = 12
+  growTimeUnit.value = 'h'
+  isEditingCustomSeed.value = false
+}
+
+function editCustomSeed(seed: CustomSeed) {
+  customSeedForm.value = { ...seed }
+  isEditingCustomSeed.value = true
+  
+  const seconds = seed.growTime
+  if (seconds % 3600 === 0) {
+    growTimeUnitValue.value = seconds / 3600
+    growTimeUnit.value = 'h'
+  } else if (seconds % 60 === 0) {
+    growTimeUnitValue.value = seconds / 60
+    growTimeUnit.value = 'm'
+  } else {
+    growTimeUnitValue.value = seconds
+    growTimeUnit.value = 's'
+  }
+}
+
+async function saveCustomSeed() {
+  const form = customSeedForm.value
+  if (!form.seedId || !form.name) {
+    showAlert('种子ID和名称不能为空', 'danger')
+    return
+  }
+
+  let multiplier = 1
+  if (growTimeUnit.value === 'h') multiplier = 3600
+  else if (growTimeUnit.value === 'm') multiplier = 60
+  form.growTime = growTimeUnitValue.value * multiplier
+
+  customSeedSaving.value = true
+  try {
+    const list = [...customSeeds.value]
+    const index = list.findIndex(s => s.seedId === form.seedId)
+    if (index >= 0) {
+      list[index] = { ...form }
+    }
+    else {
+      list.push({ ...form })
+    }
+
+    const res = await api.post('/api/custom-seeds', list)
+    if (res.data.ok) {
+      customSeeds.value = res.data.data || []
+      showAlert('保存自定义种子成功', 'primary')
+      resetCustomSeedForm()
+      await fetchCustomSeeds()
+    }
+    else {
+      showAlert(`保存失败: ${res.data.error || '未知错误'}`, 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`保存失败: ${e.response?.data?.error || e.message || '网络请求错误'}`, 'danger')
+  }
+  finally {
+    customSeedSaving.value = false
+  }
+}
+
+async function deleteCustomSeed(seedId: number) {
+  if (!window.confirm('确定要删除该自定义种子吗？'))
+    return
+
+  try {
+    const res = await api.delete(`/api/custom-seeds/${seedId}`)
+    if (res.data.ok) {
+      customSeeds.value = res.data.data || []
+      showAlert('删除自定义种子成功', 'primary')
+      if (customSeedForm.value.seedId === seedId) {
+        resetCustomSeedForm()
+      }
+    }
+    else {
+      showAlert(`删除失败: ${res.data.error || '未知错误'}`, 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`删除失败: ${e.response?.data?.error || e.message || '网络请求错误'}`, 'danger')
+  }
+}
+
+watch(activeTab, (newTab) => {
+  if (newTab === 'seeds') {
+    fetchCustomSeeds()
+  }
+})
+
+onMounted(() => {
+  if (activeTab.value === 'seeds') {
+    fetchCustomSeeds()
+  }
+})
 </script>
 
 <template>
@@ -1626,6 +1824,263 @@ async function handleTestOffline() {
                   保存下线提醒设置
                 </BaseButton>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 自定义种子 -->
+        <div v-else-if="activeTab === 'seeds'" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg text-gray-900 font-bold dark:text-gray-100">
+                自定义活动种子配置
+              </h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                此处配置的活动作物信息，会注入到系统内置的植物数据库中。注入后，种植策略（如最大经验/利润）与背包优先排序都将完美支持这些活动作物。
+              </p>
+            </div>
+            <BaseButton
+              v-if="isEditingCustomSeed"
+              variant="secondary"
+              size="sm"
+              @click="resetCustomSeedForm"
+            >
+              取消编辑
+            </BaseButton>
+          </div>
+
+          <!-- 背包中检测到未配置的种子 -->
+          <div v-if="unconfiguredSeedsList.length > 0" class="border border-amber-200 rounded-lg bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+            <h4 class="mb-2 flex items-center gap-2 text-sm text-amber-850 font-bold dark:text-amber-400">
+              <div class="i-carbon-warning-alt" />
+              发现当前账号背包中存在 {{ unconfiguredSeedsList.length }} 种未配置的活动种子：
+            </h4>
+            <div class="flex flex-wrap gap-2">
+              <div
+                v-for="seed in unconfiguredSeedsList"
+                :key="seed.seedId"
+                class="flex items-center gap-2 border border-amber-300 rounded px-2 py-1 text-xs bg-white text-gray-700 dark:border-amber-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <span>ID: <strong class="font-mono">{{ seed.seedId }}</strong> ({{ seed.name }}, 数量: {{ seed.count }})</span>
+                <BaseButton
+                  variant="primary"
+                  size="sm"
+                  class="!py-0.5 !px-1.5 !text-[10px]"
+                  @click="configureUnconfiguredSeed(seed)"
+                >
+                  点击配置
+                </BaseButton>
+              </div>
+            </div>
+          </div>
+
+          <!-- 系统中所有未登记的活动种子折叠面板 -->
+          <div v-if="systemUnconfiguredSeedsList.length > 0" class="border border-gray-200 rounded-lg bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+            <details class="group">
+              <summary class="flex items-center justify-between cursor-pointer font-bold text-sm text-gray-700 dark:text-gray-300 outline-none">
+                <div class="flex items-center gap-2">
+                  <div class="i-carbon-directory-domain text-lg text-blue-500" />
+                  <span>系统图鉴中未登记的活动种子 ({{ systemUnconfiguredSeedsList.length }} 种)</span>
+                </div>
+                <div class="i-carbon-chevron-down text-lg text-gray-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div class="mt-3 space-y-3">
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  以下是系统物品表中检测到且您未登记的活动种子。您可以直接点击配置登记其季产、经验、成熟时间等属性：
+                </p>
+                <div class="flex flex-wrap gap-2 max-h-60 overflow-y-auto p-1">
+                  <div
+                    v-for="seed in systemUnconfiguredSeedsList"
+                    :key="seed.seedId"
+                    class="flex items-center gap-2 border border-gray-200 rounded px-2 py-1.5 text-xs bg-white text-gray-750 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                  >
+                    <span>ID: <strong class="font-mono">{{ seed.seedId }}</strong> ({{ seed.name.replace(/种子$/, '') }})</span>
+                    <BaseButton
+                      variant="primary"
+                      size="sm"
+                      class="!py-0.5 !px-1.5 !text-[10px]"
+                      @click="configureUnconfiguredSeed(seed)"
+                    >
+                      配置
+                    </BaseButton>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- 编辑/添加表单 -->
+          <div class="border border-gray-200 rounded-lg bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <h4 class="mb-3 flex items-center gap-2 text-base text-gray-900 font-bold dark:text-gray-100">
+              <div class="i-carbon-edit" />
+              {{ isEditingCustomSeed ? '编辑自定义种子' : '添加自定义活动种子' }}
+            </h4>
+            
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <BaseInput
+                v-model.number="customSeedForm.seedId"
+                label="种子 ID (唯一)"
+                type="number"
+                placeholder="例如: 20150"
+                :disabled="isEditingCustomSeed"
+              />
+              <BaseInput
+                v-model="customSeedForm.name"
+                label="作物名称"
+                type="text"
+                placeholder="例如: 黄金向日葵"
+              />
+              
+              <!-- 生长周期时间单位选择器 -->
+              <div class="flex flex-col gap-1.5">
+                <label class="text-sm text-gray-700 font-medium dark:text-gray-300">总生长时间</label>
+                <div class="flex gap-2">
+                  <input
+                    v-model.number="growTimeUnitValue"
+                    type="number"
+                    placeholder="例如: 12"
+                    class="w-full border border-gray-200 rounded-lg bg-white px-3 py-2 outline-none transition-all duration-200 dark:border-gray-700 focus:border-green-500 dark:bg-gray-800 disabled:bg-gray-50 dark:text-white disabled:text-gray-400 focus:ring-2 focus:ring-green-500/20 dark:focus:border-green-500"
+                  />
+                  <BaseSelect
+                    v-model="growTimeUnit"
+                    :options="[
+                      { label: '秒', value: 's' },
+                      { label: '分钟', value: 'm' },
+                      { label: '小时', value: 'h' }
+                    ]"
+                    class="w-28"
+                  />
+                </div>
+              </div>
+              <BaseInput
+                v-model.number="customSeedForm.exp"
+                label="单次收获经验"
+                type="number"
+                placeholder="例如: 100"
+              />
+              <BaseInput
+                v-model.number="customSeedForm.price"
+                label="单果售出价格"
+                type="number"
+                placeholder="例如: 50"
+              />
+              <BaseInput
+                v-model.number="customSeedForm.fruitCount"
+                label="果实单次产量"
+                type="number"
+                placeholder="例如: 1"
+              />
+              <BaseInput
+                v-model.number="customSeedForm.seasons"
+                label="季数 (通常为1或2)"
+                type="number"
+                placeholder="例如: 1"
+              />
+              <BaseInput
+                v-model.number="customSeedForm.landLevelNeed"
+                label="所需土地等级"
+                type="number"
+                placeholder="普通土地=1, 红土地=2等"
+              />
+              <BaseInput
+                v-model.number="customSeedForm.seedPrice"
+                label="种子买入价"
+                type="number"
+                placeholder="例如: 0"
+              />
+            </div>
+
+            <div class="mt-4 flex justify-end gap-2 border-t pt-3 dark:border-gray-700">
+              <BaseButton
+                variant="secondary"
+                size="sm"
+                @click="resetCustomSeedForm"
+              >
+                重置
+              </BaseButton>
+              <BaseButton
+                variant="primary"
+                size="sm"
+                :loading="customSeedSaving"
+                @click="saveCustomSeed"
+              >
+                {{ isEditingCustomSeed ? '保存修改' : '确认添加' }}
+              </BaseButton>
+            </div>
+          </div>
+
+          <!-- 已添加种子列表 -->
+          <div class="border border-gray-200 rounded-lg bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <h4 class="mb-3 flex items-center gap-2 text-base text-gray-900 font-bold dark:text-gray-100">
+              <div class="i-carbon-list" />
+              自定义种子列表 ({{ customSeeds.length }})
+            </h4>
+
+            <div v-if="customSeedsLoading" class="flex items-center justify-center py-8">
+              <div class="i-svg-spinners-indicator text-2xl text-gray-400" />
+            </div>
+            
+            <div v-else-if="customSeeds.length === 0" class="flex flex-col items-center justify-center py-8 text-gray-500">
+              <div class="i-carbon-agriculture text-4xl mb-2" />
+              暂无自定义种子，您可以通过上方表单进行添加。
+            </div>
+
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
+                <thead class="bg-gray-50 text-xs text-gray-700 uppercase dark:bg-gray-700 dark:text-gray-400">
+                  <tr>
+                    <th scope="col" class="px-4 py-3">种子 ID</th>
+                    <th scope="col" class="px-4 py-3">名称</th>
+                    <th scope="col" class="px-4 py-3">生长时间</th>
+                    <th scope="col" class="px-4 py-3">经验</th>
+                    <th scope="col" class="px-4 py-3">单果售价</th>
+                    <th scope="col" class="px-4 py-3">产量</th>
+                    <th scope="col" class="px-4 py-3">季数</th>
+                    <th scope="col" class="px-4 py-3">所需土地</th>
+                    <th scope="col" class="px-4 py-3">折合经验/小时</th>
+                    <th scope="col" class="px-4 py-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="seed in customSeeds"
+                    :key="seed.seedId"
+                    class="border-b bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-600"
+                  >
+                    <td class="px-4 py-3 font-mono text-gray-900 dark:text-white">{{ seed.seedId }}</td>
+                    <td class="px-4 py-3 text-gray-900 font-medium dark:text-white">{{ seed.name }}</td>
+                    <td class="px-4 py-3">
+                      {{ seed.growTime % 3600 === 0 ? `${seed.growTime / 3600}小时` : (seed.growTime % 60 === 0 ? `${seed.growTime / 60}分钟` : `${seed.growTime}秒`) }}
+                    </td>
+                    <td class="px-4 py-3">{{ seed.exp }}</td>
+                    <td class="px-4 py-3">{{ seed.price }}金币</td>
+                    <td class="px-4 py-3">{{ seed.fruitCount }}</td>
+                    <td class="px-4 py-3">{{ seed.seasons }}季</td>
+                    <td class="px-4 py-3">等级 {{ seed.landLevelNeed }}</td>
+                    <td class="px-4 py-3 text-green-600 font-bold dark:text-green-400">
+                      {{ ((seed.exp * (seed.seasons === 2 ? 2 : 1)) / (seed.growTime * (seed.seasons === 2 ? 1.5 : 1) || 1) * 3600).toFixed(1) }}
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="flex gap-2">
+                        <BaseButton
+                          variant="secondary"
+                          size="sm"
+                          @click="editCustomSeed(seed)"
+                        >
+                          编辑
+                        </BaseButton>
+                        <BaseButton
+                          variant="danger"
+                          size="sm"
+                          @click="deleteCustomSeed(seed.seedId)"
+                        >
+                          删除
+                        </BaseButton>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

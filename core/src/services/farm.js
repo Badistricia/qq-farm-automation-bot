@@ -1613,6 +1613,7 @@ async function runFarmOperation(opType) {
             if (upgraded > 0) {
                 actions.push(`升级${upgraded}`);
                 recordOperation('upgrade', upgraded);
+                networkEvents.emit('landUpgraded', upgraded);
             }
         }
     }

@@ -37,6 +37,13 @@ export const menuRoutes: MenuItem[] = [
     component: () => import('@/views/Analytics.vue'),
   },
   {
+    path: 'assets',
+    name: 'assets',
+    label: '资产',
+    icon: 'i-carbon-chart-multitype',
+    component: () => import('@/views/Assets.vue'),
+  },
+  {
     path: 'settings',
     name: 'Settings',
     label: '设置',

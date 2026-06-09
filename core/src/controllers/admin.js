@@ -12,8 +12,8 @@ const fetch = require('node-fetch');
 const { Server: SocketIOServer } = require('socket.io');
 const { version } = require('../../package.json');
 const { CONFIG, updateRuntimeConfig, getRuntimeConfig, getDefaultSystemConfig } = require('../config/config');
-const { getLevelExpProgress } = require('../config/gameConfig');
-const { getResourcePath } = require('../config/runtime-paths');
+const { getLevelExpProgress, loadConfigs } = require('../config/gameConfig');
+const { getResourcePath, getDataFile, ensureDataDir } = require('../config/runtime-paths');
 const store = require('../models/store');
 const { addOrUpdateAccount, deleteAccount } = store;
 const { findAccountByRef, normalizeAccountRef, resolveAccountId } = require('../services/account-resolver');
@@ -112,6 +112,14 @@ function startAdminServer(dataProvider) {
 
         // Card keys / limits disabled: skip checking bans and expiration
 
+        next();
+    };
+
+    // ============ 管理员权限中间件 ============
+    const adminRequired = (req, res, next) => {
+        if (!req.currentUser || req.currentUser.role !== 'admin') {
+            return res.status(403).json({ ok: false, error: '需要管理员权限' });
+        }
         next();
     };
 
@@ -1161,6 +1169,156 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // API: 获取自定义种子列表，并检测背包中未登记的种子
+    app.get('/api/custom-seeds', authRequired, async (req, res) => {
+        try {
+            const customSeedsPath = getDataFile('custom_seeds.json');
+            let seedsList = [];
+            if (fs.existsSync(customSeedsPath)) {
+                seedsList = JSON.parse(fs.readFileSync(customSeedsPath, 'utf8'));
+            }
+
+            const accountId = req.headers['x-account-id'];
+            let unconfiguredSeeds = [];
+            if (accountId && checkAccountAccess(req, accountId)) {
+                try {
+                    const bagReply = await provider.getBag(accountId);
+                    const { getBagItems } = require('../services/warehouse');
+                    const rawItems = getBagItems(bagReply);
+                    
+                    const { getPlantBySeedId, getSeedNameFallback, getSeedPrice, getFruitPrice } = require('../config/gameConfig');
+                    
+                    for (const item of (rawItems || [])) {
+                        const id = Number(item && item.id) || 0;
+                        const count = Number(item && item.count) || 0;
+                        
+                        // 种子ID通常在 [20000, 39999] 区间，且数量大于 0
+                        if (id >= 20000 && id < 40000 && count > 0) {
+                            const plant = getPlantBySeedId(id);
+                            if (!plant) {
+                                unconfiguredSeeds.push({
+                                    seedId: id,
+                                    name: getSeedNameFallback(id),
+                                    count,
+                                    seedPrice: getSeedPrice(id),
+                                    price: getFruitPrice(id + 20000)
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // 仅记录，不影响主接口返回
+                    adminLogger.warn('获取背包未配置种子失败', { accountId, error: e.message });
+                }
+            }
+
+            // 从 ItemInfo 库扫描系统所有未配置的活动种子 [20000, 39999]
+            let systemUnconfiguredSeeds = [];
+            try {
+                const { getPlantBySeedId, getSeedNameFallback, getSeedPrice, getFruitPrice } = require('../config/gameConfig');
+                const fs = require('node:fs');
+                const configDir = getResourcePath('gameConfig');
+                const itemInfoPath = path.join(configDir, 'ItemInfo.json');
+                if (fs.existsSync(itemInfoPath)) {
+                    const itemInfoConfig = JSON.parse(fs.readFileSync(itemInfoPath, 'utf8'));
+                    for (const item of itemInfoConfig) {
+                        const id = Number(item && item.id) || 0;
+                        if (id >= 20000 && id < 40000 && Number(item.type) === 5) {
+                            const plant = getPlantBySeedId(id);
+                            if (!plant) {
+                                systemUnconfiguredSeeds.push({
+                                    seedId: id,
+                                    name: getSeedNameFallback(id),
+                                    seedPrice: getSeedPrice(id),
+                                    price: getFruitPrice(id + 20000)
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                adminLogger.warn('扫描系统未配置种子失败', { error: e.message });
+            }
+
+            res.json({ ok: true, data: seedsList, unconfiguredSeeds, systemUnconfiguredSeeds });
+        } catch (e) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 保存自定义种子（仅管理员）
+    app.post('/api/custom-seeds', authRequired, adminRequired, (req, res) => {
+        try {
+            ensureDataDir();
+            const customSeedsPath = getDataFile('custom_seeds.json');
+            const newSeeds = req.body;
+            if (!Array.isArray(newSeeds)) {
+                return res.status(400).json({ ok: false, error: '请求数据格式不正确，应为数组' });
+            }
+
+            // 基础校验并规整化数据
+            const cleanedSeeds = [];
+            for (const s of newSeeds) {
+                const seedId = Number(s.seedId);
+                const name = String(s.name || '').trim();
+                if (!seedId || !name) {
+                    return res.status(400).json({ ok: false, error: '种子ID和名称不能为空' });
+                }
+                cleanedSeeds.push({
+                    seedId,
+                    name,
+                    landLevelNeed: Number(s.landLevelNeed) || 0,
+                    seasons: Number(s.seasons) || 1,
+                    growTime: Number(s.growTime) || 0,
+                    exp: Number(s.exp) || 0,
+                    price: Number(s.price) || 0,
+                    fruitCount: Number(s.fruitCount) || 1,
+                    seedPrice: Number(s.seedPrice) || 0,
+                });
+            }
+
+            fs.writeFileSync(customSeedsPath, JSON.stringify(cleanedSeeds, null, 4), 'utf8');
+            
+            // 热加载配置到内存 Map 中
+            loadConfigs();
+
+            res.json({ ok: true, data: cleanedSeeds });
+        } catch (e) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 删除自定义种子（仅管理员）
+    app.delete('/api/custom-seeds/:seedId', authRequired, adminRequired, (req, res) => {
+        try {
+            const seedIdToDelete = Number(req.params.seedId);
+            if (!seedIdToDelete) {
+                return res.status(400).json({ ok: false, error: '无效的种子ID' });
+            }
+
+            ensureDataDir();
+            const customSeedsPath = getDataFile('custom_seeds.json');
+            let currentSeeds = [];
+            if (fs.existsSync(customSeedsPath)) {
+                currentSeeds = JSON.parse(fs.readFileSync(customSeedsPath, 'utf8'));
+            }
+
+            if (!Array.isArray(currentSeeds)) {
+                currentSeeds = [];
+            }
+
+            const nextSeeds = currentSeeds.filter(s => Number(s.seedId) !== seedIdToDelete);
+            fs.writeFileSync(customSeedsPath, JSON.stringify(nextSeeds, null, 4), 'utf8');
+
+            // 热加载配置到内存 Map 中
+            loadConfigs();
+
+            res.json({ ok: true, data: nextSeeds });
+        } catch (e) {
+            handleApiError(res, e);
+        }
+    });
+
     // API: 种子列表
     app.get('/api/seeds', async (req, res) => {
         const id = getAccId(req);
@@ -1522,13 +1680,7 @@ function startAdminServer(dataProvider) {
         }
     });
 
-    // ============ 管理员权限中间件 ============
-    const adminRequired = (req, res, next) => {
-        if (!req.currentUser || req.currentUser.role !== 'admin') {
-            return res.status(403).json({ ok: false, error: '需要管理员权限' });
-        }
-        next();
-    };
+
 
     // ============ 公告管理 API ============
     // 获取公告（所有用户可访问）
@@ -2211,6 +2363,41 @@ function startAdminServer(dataProvider) {
 
             // 与当前 web 前端保持一致：直接返回数组
             res.json(list);
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    // API: 资产历史记录
+    app.get('/api/assets/history', (req, res) => {
+        const id = getAccId(req);
+        if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+
+        if (!checkAccountAccess(req, id)) {
+            return res.status(403).json({ ok: false, error: '无权访问此账号' });
+        }
+
+        try {
+            const { getAssetHistory } = require('../services/assets');
+            const data = getAssetHistory(id);
+            res.json({ ok: true, data });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
+    app.delete('/api/assets/history', (req, res) => {
+        const id = getAccId(req);
+        if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+
+        if (!checkAccountAccess(req, id)) {
+            return res.status(403).json({ ok: false, error: '无权访问此账号' });
+        }
+
+        try {
+            const { clearAssetHistory } = require('../services/assets');
+            const result = clearAssetHistory(id);
+            res.json(result);
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }

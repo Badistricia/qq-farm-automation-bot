@@ -112,6 +112,9 @@ let harvestSellRunning = false;
 let onWsError = null;
 let wsErrorHandledAt = 0;
 let lastDailyRunDate = '';
+let onAssetSell = null;
+let onAssetHarvest = null;
+let onAssetUpgrade = null;
 const workerScheduler = createScheduler('worker');
 
 function isDailyRoutineEnabled(_auto) {
@@ -503,8 +506,9 @@ async function startBot(config) {
         networkEvents.on('farmHarvested', onFarmHarvested);
 
         // 登录后主动拉一次背包，初始化点券(ID:1002)数量
+        let bagReply = null;
         try {
-            const bagReply = await getBag();
+            bagReply = await getBag();
             const items = getBagItems(bagReply);
             let coupon = 0;
             for (const it of (items || [])) {
@@ -523,6 +527,46 @@ async function startBot(config) {
         const accountId = process.env.FARM_ACCOUNT_ID || '';
         initStatsWithPersistence(accountId, Number(latest.gold || 0), Number(latest.exp || 0), Number(latest.coupon || 0));
         resetSessionGains();
+
+        // 资产历史记录统计
+        let lastAssetCheckAt = 0;
+        const runAssetSnapshot = async (reason) => {
+            if (!loginReady) return;
+            const now = Date.now();
+            const isPriority = ['升级土地', '出售果实', '收获作物', '初始化'].includes(reason);
+            if (!isPriority && now - lastAssetCheckAt < 60000) {
+                return;
+            }
+            lastAssetCheckAt = now;
+
+            try {
+                const { recordAssetSnapshot: recordSnapshot } = require('../services/assets');
+                const bagRep = await getBag();
+                const bagItems = getBagItems(bagRep);
+                const currentLatest = getUserState();
+                const accId = process.env.FARM_ACCOUNT_ID || '';
+                recordSnapshot(accId, Number(currentLatest.gold || 0), bagItems, reason);
+            } catch (e) {
+                // ignore
+            }
+        };
+
+        if (onAssetSell) networkEvents.off('sell', onAssetSell);
+        onAssetSell = () => runAssetSnapshot('出售果实');
+        networkEvents.on('sell', onAssetSell);
+
+        if (onAssetHarvest) networkEvents.off('farmHarvested', onAssetHarvest);
+        onAssetHarvest = () => runAssetSnapshot('收获作物');
+        networkEvents.on('farmHarvested', onAssetHarvest);
+
+        if (onAssetUpgrade) networkEvents.off('landUpgraded', onAssetUpgrade);
+        onAssetUpgrade = () => runAssetSnapshot('升级土地');
+        networkEvents.on('landUpgraded', onAssetUpgrade);
+
+        // 立即执行一次初始化写入
+        if (bagReply) {
+            runAssetSnapshot('初始化');
+        }
 
         // 登录成功后启动各模块
         await processInviteCodes();
@@ -544,6 +588,11 @@ async function startBot(config) {
         startUnifiedScheduler();
         // 每日礼包/任务改为跨日调度，不在农场轮询内执行
         startDailyRoutineTimer();
+
+        // 启动资产监控定时器（每5分钟记录一次）
+        workerScheduler.setIntervalTask('assets_tracker_interval', 5 * 60 * 1000, () => {
+            runAssetSnapshot('定时记录');
+        });
 
         // 立即发送一次状态
         syncStatus();
@@ -573,6 +622,18 @@ async function stopBot() {
     if (onFarmHarvested) {
         networkEvents.off('farmHarvested', onFarmHarvested);
         onFarmHarvested = null;
+    }
+    if (onAssetSell) {
+        networkEvents.off('sell', onAssetSell);
+        onAssetSell = null;
+    }
+    if (onAssetHarvest) {
+        networkEvents.off('farmHarvested', onAssetHarvest);
+        onAssetHarvest = null;
+    }
+    if (onAssetUpgrade) {
+        networkEvents.off('landUpgraded', onAssetUpgrade);
+        onAssetUpgrade = null;
     }
     stopFarmCheckLoop();
     stopFriendCheckLoop();

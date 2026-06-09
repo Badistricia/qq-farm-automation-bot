@@ -5,7 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { getResourcePath } = require('./runtime-paths');
+const { getResourcePath, getDataFile } = require('./runtime-paths');
 
 // ============ 等级经验表 ============
 let roleLevelConfig = null;
@@ -21,6 +21,7 @@ const itemInfoMap = new Map();  // item_id -> item
 const seedItemMap = new Map();  // seed_id -> item(type=5)
 const seedImageMap = new Map(); // seed_id -> image url
 const seedAssetImageMap = new Map(); // asset_name (Crop_xxx) -> image url
+const seedNamesMap = new Map();  // seed_id -> name (extracted from image files)
 
 /**
  * 加载配置文件
@@ -108,6 +109,16 @@ function loadConfigs() {
                     }
                 }
 
+                // 提取名称：id_Name_...
+                const byIdAndName = filename.match(/^(\d+)_([^_.]+)/);
+                if (byIdAndName) {
+                    const seedId = Number(byIdAndName[1]) || 0;
+                    const name = String(byIdAndName[2] || '').trim();
+                    if (seedId > 0 && name && !seedNamesMap.has(seedId)) {
+                        seedNamesMap.set(seedId, name);
+                    }
+                }
+
                 // 2) ...Crop_xxx_Seed.png 命名，按 asset_name 建立映射
                 const byAsset = filename.match(/(Crop_\d+)_Seed\.(?:png|jpg|jpeg|webp|gif)$/i);
                 if (byAsset) {
@@ -121,6 +132,90 @@ function loadConfigs() {
         }
     } catch (e) {
         console.warn('[配置] 加载 seed_images_named 失败:', e.message);
+    }
+
+    // 加载自定义种子配置并合并
+    try {
+        const customSeedsPath = getDataFile('custom_seeds.json');
+        if (fs.existsSync(customSeedsPath)) {
+            const customSeeds = JSON.parse(fs.readFileSync(customSeedsPath, 'utf8'));
+            if (Array.isArray(customSeeds)) {
+                for (const s of customSeeds) {
+                    const seedId = Number(s.seedId);
+                    if (!seedId) continue;
+                    
+                    const plantId = 1020000 + (seedId - 20000);
+                    const fruitId = seedId + 20000;
+                    
+                    // 生长阶段格式: "发芽:growTime;成熟:0;"
+                    // 或者是 "种子:growTime/2;发芽:growTime/2;成熟:0;"
+                    // 必须能够被 parseNormalFertilizerReduceSec 正确处理，我们用 种子:growTime/2;发芽:growTime/2;成熟:0;
+                    const growTimeVal = Number(s.growTime) || 0;
+                    const halfGrow = Math.floor(growTimeVal / 2);
+                    const growPhases = `种子:${halfGrow};发芽:${halfGrow};成熟:0;`;
+                    
+                    const plantObj = {
+                        id: plantId,
+                        name: s.name,
+                        seed_id: seedId,
+                        land_level_need: Number(s.landLevelNeed) || 0,
+                        seasons: Number(s.seasons) || 1,
+                        grow_phases: growPhases,
+                        exp: Number(s.exp) || 0,
+                        size: 0,
+                        fruit: {
+                            id: fruitId,
+                            count: Number(s.fruitCount) || 1
+                        },
+                        isCustom: true
+                    };
+                    
+                    const seedItemObj = {
+                        id: seedId,
+                        type: 5,
+                        name: `${s.name}种子`,
+                        price: Number(s.seedPrice) || 0,
+                        level: Number(s.landLevelNeed) || 0,
+                        desc: `种植后，可以收获一定数量的${s.name}。`,
+                        effectDesc: s.name,
+                        can_use: 0,
+                        isCustom: true
+                    };
+                    
+                    const fruitItemObj = {
+                        id: fruitId,
+                        type: 6,
+                        name: s.name,
+                        price: Number(s.price) || 0,
+                        level: Number(s.landLevelNeed) || 0,
+                        desc: `卖给商人后，可以获得金币。`,
+                        effectDesc: `卖给商人后，可以获得金币。`,
+                        can_use: 0,
+                        isCustom: true
+                    };
+                    
+                    plantMap.set(plantId, plantObj);
+                    seedToPlant.set(seedId, plantObj);
+                    fruitToPlant.set(fruitId, plantObj);
+                    
+                    itemInfoMap.set(seedId, seedItemObj);
+                    seedItemMap.set(seedId, seedItemObj);
+                    itemInfoMap.set(fruitId, fruitItemObj);
+                    
+                    if (plantConfig) {
+                        plantConfig = plantConfig.filter(p => p.id !== plantId);
+                        plantConfig.push(plantObj);
+                    }
+                    if (itemInfoConfig) {
+                        itemInfoConfig = itemInfoConfig.filter(item => item.id !== seedId && item.id !== fruitId);
+                        itemInfoConfig.push(seedItemObj, fruitItemObj);
+                    }
+                }
+                console.warn(`[配置] 已合并自定义配置种子 (${customSeeds.length} 种)`);
+            }
+        }
+    } catch (e) {
+        console.warn('[配置] 加载 custom_seeds.json 失败:', e.message);
     }
 }
 
@@ -328,6 +423,25 @@ function getAllPlants() {
     return Array.from(plantMap.values());
 }
 
+function getSeedNameFallback(seedId) {
+    const id = Number(seedId) || 0;
+    if (id <= 0) return '未知种子';
+    
+    // 1. 尝试从 ItemInfo 获取
+    const item = itemInfoMap.get(id);
+    if (item && item.name) {
+        return String(item.name).replace(/种子$/, '');
+    }
+    
+    // 2. 尝试从图片名映射获取
+    const imgName = seedNamesMap.get(id);
+    if (imgName) {
+        return imgName.replace(/种子$/, '');
+    }
+    
+    return `未知种子`;
+}
+
 // 启动时加载配置
 loadConfigs();
 
@@ -343,6 +457,7 @@ module.exports = {
     getPlantBySeedId,
     getPlantName,
     getPlantNameBySeedId,
+    getSeedNameFallback,
     getPlantGrowTime,
     getPlantExp,
     formatGrowTime,
